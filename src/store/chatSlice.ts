@@ -19,6 +19,7 @@ interface ChatState {
   loadingMessages: boolean;
   sendingMessage: boolean;
   error: string | null;
+  userId: string | null;
 }
 
 const initialState: ChatState = {
@@ -29,6 +30,7 @@ const initialState: ChatState = {
   loadingMessages: false,
   sendingMessage: false,
   error: null,
+  userId: null,
 };
 
 // Async thunks
@@ -77,6 +79,12 @@ const chatSlice = createSlice({
   reducers: {
     setCurrentConversation: (state, action: PayloadAction<number>) => {
       state.currentConversationId = action.payload;
+    },
+    setUserId: (state, action: PayloadAction<string>) => {
+      state.userId = action.payload;
+    },
+    clearUserId: (state) => {
+      state.userId = null;
     },
     clearError: (state) => {
       state.error = null;
@@ -149,5 +157,6 @@ const chatSlice = createSlice({
   },
 });
 
-export const { setCurrentConversation, clearError } = chatSlice.actions;
+export const { setCurrentConversation, setUserId, clearUserId, clearError } =
+  chatSlice.actions;
 export default chatSlice.reducer;

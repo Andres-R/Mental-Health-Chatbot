@@ -20,6 +20,7 @@ import {
   sendMessageAsync,
   createNewConversation,
   setCurrentConversation,
+  clearUserId,
 } from "../store/chatSlice";
 
 function Home() {
@@ -82,8 +83,8 @@ function Home() {
   };
 
   const handleLogout = () => {
-    // TODO: Implement logout logic here
-    console.log("Logout clicked");
+    localStorage.removeItem("userId");
+    dispatch(clearUserId());
     navigate("/");
   };
 

@@ -3,23 +3,25 @@ import {
   createAsyncThunk,
   type PayloadAction,
 } from "@reduxjs/toolkit";
-import type { Chat, Message } from "../types/chat";
+import type { Conversation, Message } from "../types/chat";
 import {
   fetchConversations,
   fetchConversationMessages,
   sendMessage,
   createConversation,
+  deleteConversation,
 } from "../services/chatApi";
 
 interface ChatState {
-  conversations: Chat[];
-  currentConversationId: number | null;
+  conversations: Conversation[];
+  currentConversationId: string | null;
   currentMessages: Message[];
   loadingConversations: boolean;
   loadingMessages: boolean;
   sendingMessage: boolean;
   error: string | null;
   userId: string | null;
+  skipNextLoadMessages: boolean;
 }
 
 const initialState: ChatState = {
@@ -31,20 +33,20 @@ const initialState: ChatState = {
   sendingMessage: false,
   error: null,
   userId: null,
+  skipNextLoadMessages: false,
 };
 
 // Async thunks
 export const loadConversations = createAsyncThunk(
   "chat/loadConversations",
-  async () => {
-    const conversations = await fetchConversations();
-    return conversations;
+  async (userId: string) => {
+    return await fetchConversations(userId);
   },
 );
 
 export const loadMessages = createAsyncThunk(
   "chat/loadMessages",
-  async (conversationId: number) => {
+  async (conversationId: string) => {
     const messages = await fetchConversationMessages(conversationId);
     return { conversationId, messages };
   },
@@ -56,7 +58,7 @@ export const sendMessageAsync = createAsyncThunk(
     conversationId,
     message,
   }: {
-    conversationId: number;
+    conversationId: string;
     message: string;
   }) => {
     const result = await sendMessage(conversationId, message);
@@ -66,9 +68,16 @@ export const sendMessageAsync = createAsyncThunk(
 
 export const createNewConversation = createAsyncThunk(
   "chat/createConversation",
-  async (name: string) => {
-    const newChat = await createConversation(name);
-    return newChat;
+  async ({ userId, title }: { userId: string; title: string | null }) => {
+    return await createConversation({ userId, title, status: "active" });
+  },
+);
+
+export const deleteConversationAsync = createAsyncThunk(
+  "chat/deleteConversation",
+  async (id: string) => {
+    await deleteConversation(id);
+    return id;
   },
 );
 
@@ -77,7 +86,7 @@ const chatSlice = createSlice({
   name: "chat",
   initialState,
   reducers: {
-    setCurrentConversation: (state, action: PayloadAction<number>) => {
+    setCurrentConversation: (state, action: PayloadAction<string>) => {
       state.currentConversationId = action.payload;
     },
     setUserId: (state, action: PayloadAction<string>) => {
@@ -116,6 +125,10 @@ const chatSlice = createSlice({
     });
     builder.addCase(loadMessages.fulfilled, (state, action) => {
       state.loadingMessages = false;
+      if (state.skipNextLoadMessages) {
+        state.skipNextLoadMessages = false;
+        return;
+      }
       state.currentMessages = action.payload.messages;
     });
     builder.addCase(loadMessages.rejected, (state, action) => {
@@ -153,6 +166,23 @@ const chatSlice = createSlice({
       state.conversations.push(action.payload);
       state.currentConversationId = action.payload.id;
       state.currentMessages = [];
+      state.skipNextLoadMessages = true;
+    });
+
+    // Delete conversation — optimistic: remove immediately on pending
+    builder.addCase(deleteConversationAsync.pending, (state, action) => {
+      const deletedId = action.meta.arg;
+      state.conversations = state.conversations.filter(
+        (c) => c.id !== deletedId,
+      );
+      if (state.currentConversationId === deletedId) {
+        state.currentConversationId =
+          state.conversations.length > 0 ? state.conversations[0].id : null;
+        state.currentMessages = [];
+      }
+    });
+    builder.addCase(deleteConversationAsync.fulfilled, () => {
+      // state already updated optimistically in pending
     });
   },
 });

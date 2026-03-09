@@ -1,23 +1,4 @@
-import type { Chat, Message } from "../types/chat";
-
-// Mock data
-const mockChats: Chat[] = [
-  {
-    id: 1,
-    name: "Anxiety Support",
-    messages: [],
-  },
-  {
-    id: 2,
-    name: "Sleep Issues",
-    messages: [],
-  },
-  {
-    id: 3,
-    name: "Stress Management",
-    messages: [],
-  },
-];
+import type { Conversation, Message } from "../types/chat";
 
 const mockMessages: Record<number, Message[]> = {
   1: [
@@ -52,20 +33,33 @@ const mockMessages: Record<number, Message[]> = {
 };
 
 /**
- * Fetch all conversations for the user
- * TODO: Replace with actual API call
+ * Delete a conversation by id
  */
-export const fetchConversations = async (): Promise<Chat[]> => {
-  // Simulate API delay
-  await new Promise((resolve) => setTimeout(resolve, 500));
+export const deleteConversation = async (id: string): Promise<void> => {
+  const baseUrl = import.meta.env.VITE_BE_BASE_URL;
+  const response = await fetch(
+    `${baseUrl}/v1/conversations/${encodeURIComponent(id)}`,
+    { method: "DELETE" },
+  );
+  if (!response.ok) {
+    throw new Error(`Failed to delete conversation: ${response.statusText}`);
+  }
+};
 
-  // TODO: Make actual API call
-  // const response = await fetch('/api/conversations');
-  // const data = await response.json();
-  // return data;
-
-  // Return mock data for now
-  return mockChats;
+/**
+ * Fetch all conversations for the user
+ */
+export const fetchConversations = async (
+  userId: string,
+): Promise<Conversation[]> => {
+  const baseUrl = import.meta.env.VITE_BE_BASE_URL;
+  const response = await fetch(
+    `${baseUrl}/v1/conversations?userId=${encodeURIComponent(userId)}`,
+  );
+  if (!response.ok) {
+    throw new Error(`Failed to fetch conversations: ${response.statusText}`);
+  }
+  return response.json();
 };
 
 /**
@@ -73,7 +67,7 @@ export const fetchConversations = async (): Promise<Chat[]> => {
  * TODO: Replace with actual API call
  */
 export const fetchConversationMessages = async (
-  conversationId: number,
+  conversationId: string,
 ): Promise<Message[]> => {
   // Simulate API delay
   await new Promise((resolve) => setTimeout(resolve, 300));
@@ -84,7 +78,7 @@ export const fetchConversationMessages = async (
   // return data;
 
   // Return mock data for now
-  return mockMessages[conversationId] || [];
+  return mockMessages[parseInt(conversationId, 10)] || [];
 };
 
 /**
@@ -92,7 +86,7 @@ export const fetchConversationMessages = async (
  * TODO: Replace with actual API call
  */
 export const sendMessage = async (
-  _conversationId: number,
+  _conversationId: string,
   message: string,
 ): Promise<{ userMessage: Message; botMessage: Message }> => {
   // Simulate API delay
@@ -135,25 +129,26 @@ export const sendMessage = async (
 
 /**
  * Create a new conversation
- * TODO: Replace with actual API call
  */
-export const createConversation = async (name: string): Promise<Chat> => {
-  // Simulate API delay
-  await new Promise((resolve) => setTimeout(resolve, 300));
-
-  const newChat: Chat = {
-    id: Date.now(),
-    name,
-    messages: [],
-  };
-
-  // TODO: Make actual API call
-  // const response = await fetch('/api/conversations', {
-  //   method: 'POST',
-  //   headers: { 'Content-Type': 'application/json' },
-  //   body: JSON.stringify({ name })
-  // });
-  // return await response.json();
-
-  return newChat;
+export const createConversation = async ({
+  userId,
+  title,
+  status,
+}: {
+  userId: string;
+  title: string | null;
+  status: string;
+}): Promise<Conversation> => {
+  const baseUrl = import.meta.env.VITE_BE_BASE_URL;
+  const response = await fetch(`${baseUrl}/v1/conversations`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ userId, title, status }),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to create conversation: ${response.statusText}`);
+  }
+  const data: { id: string } = await response.json();
+  const now = new Date().toISOString();
+  return { id: data.id, userId, title, status, createdAt: now, updatedAt: now };
 };

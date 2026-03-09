@@ -10,3 +10,12 @@ export interface Chat {
   name: string;
   messages: Message[];
 }
+
+export interface Conversation {
+  id: string;
+  userId: string;
+  title: string | null;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+}

@@ -13,6 +13,7 @@ import {
   Paper,
 } from "@mui/material";
 import SendIcon from "@mui/icons-material/Send";
+import DeleteIcon from "@mui/icons-material/Delete";
 import { useAppDispatch, useAppSelector } from "../store/hooks";
 import {
   loadConversations,
@@ -21,6 +22,7 @@ import {
   createNewConversation,
   setCurrentConversation,
   clearUserId,
+  deleteConversationAsync,
 } from "../store/chatSlice";
 
 function Home() {
@@ -35,7 +37,11 @@ function Home() {
     currentConversationId,
     currentMessages,
     sendingMessage,
+    userId,
   } = useAppSelector((state) => state.chat);
+
+  // Resolve userId from Redux state or localStorage fallback
+  const resolvedUserId = userId ?? localStorage.getItem("userId");
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -43,8 +49,10 @@ function Home() {
 
   // Load conversations on mount
   useEffect(() => {
-    dispatch(loadConversations());
-  }, [dispatch]);
+    if (resolvedUserId) {
+      dispatch(loadConversations(resolvedUserId));
+    }
+  }, [dispatch, resolvedUserId]);
 
   // Load messages when conversation changes
   useEffect(() => {
@@ -79,7 +87,8 @@ function Home() {
   }, [sendingMessage]);
 
   const handleNewChat = () => {
-    dispatch(createNewConversation(`New Chat ${conversations.length + 1}`));
+    if (!resolvedUserId) return;
+    dispatch(createNewConversation({ userId: resolvedUserId, title: null }));
   };
 
   const handleLogout = () => {
@@ -88,16 +97,24 @@ function Home() {
     navigate("/");
   };
 
-  const handleSendMessage = () => {
-    if (!inputMessage.trim() || currentConversationId === null) return;
+  const handleSendMessage = async () => {
+    if (!inputMessage.trim()) return;
 
-    dispatch(
-      sendMessageAsync({
-        conversationId: currentConversationId,
-        message: inputMessage,
-      }),
-    );
+    let conversationId = currentConversationId;
 
+    if (!conversationId) {
+      if (!resolvedUserId) return;
+      try {
+        const result = await dispatch(
+          createNewConversation({ userId: resolvedUserId, title: null }),
+        ).unwrap();
+        conversationId = result.id;
+      } catch {
+        return;
+      }
+    }
+
+    dispatch(sendMessageAsync({ conversationId, message: inputMessage }));
     setInputMessage("");
   };
 
@@ -178,13 +195,31 @@ function Home() {
         </Box>
         <List sx={{ flex: 1, overflow: "hidden", py: 0 }}>
           {conversations.map((chat) => (
-            <ListItem key={chat.id} disablePadding>
+            <ListItem
+              key={chat.id}
+              disablePadding
+              secondaryAction={
+                currentConversationId === chat.id ? (
+                  <IconButton
+                    size="small"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      dispatch(deleteConversationAsync(chat.id));
+                    }}
+                    sx={{ color: "#666", "&:hover": { color: "#ef4444" } }}
+                  >
+                    <DeleteIcon fontSize="small" />
+                  </IconButton>
+                ) : undefined
+              }
+            >
               <ListItemButton
                 selected={currentConversationId === chat.id}
                 onClick={() => dispatch(setCurrentConversation(chat.id))}
                 sx={{
                   py: 0.5,
                   px: 1.25,
+                  pr: currentConversationId === chat.id ? 5 : 1.25,
                   "&.Mui-selected": {
                     bgcolor: "#1a1a1a",
                     borderLeft: "3px solid #60a5fa",
@@ -195,7 +230,7 @@ function Home() {
                 }}
               >
                 <ListItemText
-                  primary={chat.name}
+                  primary={chat.title ?? "Untitled"}
                   primaryTypographyProps={{
                     fontWeight: currentConversationId === chat.id ? 600 : 400,
                   }}

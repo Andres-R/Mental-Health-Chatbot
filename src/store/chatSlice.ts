@@ -3,11 +3,12 @@ import {
   createAsyncThunk,
   type PayloadAction,
 } from "@reduxjs/toolkit";
-import type { Conversation, Message } from "../types/chat";
+import type { Conversation, ApiMessage } from "../types/chat";
+import { MessageRole, SafetyCategory } from "../types/chat";
 import {
   fetchConversations,
-  fetchConversationMessages,
-  sendMessage,
+  fetchMessages,
+  postMessage,
   createConversation,
   deleteConversation,
 } from "../services/chatApi";
@@ -15,25 +16,24 @@ import {
 interface ChatState {
   conversations: Conversation[];
   currentConversationId: string | null;
-  currentMessages: Message[];
+  /** Cached messages keyed by conversationId */
+  messagesByConversation: Record<string, ApiMessage[]>;
   loadingConversations: boolean;
   loadingMessages: boolean;
   sendingMessage: boolean;
   error: string | null;
   userId: string | null;
-  skipNextLoadMessages: boolean;
 }
 
 const initialState: ChatState = {
   conversations: [],
   currentConversationId: null,
-  currentMessages: [],
+  messagesByConversation: {},
   loadingConversations: false,
   loadingMessages: false,
   sendingMessage: false,
   error: null,
   userId: null,
-  skipNextLoadMessages: false,
 };
 
 // Async thunks
@@ -46,9 +46,18 @@ export const loadConversations = createAsyncThunk(
 
 export const loadMessages = createAsyncThunk(
   "chat/loadMessages",
-  async (conversationId: string) => {
-    const messages = await fetchConversationMessages(conversationId);
-    return { conversationId, messages };
+  async (conversationId: string, { getState }) => {
+    const state = getState() as { chat: ChatState };
+    // Return cached messages if they exist
+    if (state.chat.messagesByConversation[conversationId]) {
+      return {
+        conversationId,
+        messages: state.chat.messagesByConversation[conversationId],
+        cached: true,
+      };
+    }
+    const messages = await fetchMessages(conversationId);
+    return { conversationId, messages, cached: false };
   },
 );
 
@@ -56,13 +65,44 @@ export const sendMessageAsync = createAsyncThunk(
   "chat/sendMessage",
   async ({
     conversationId,
+    userId,
+    message,
+  }: {
+    conversationId: string;
+    userId: string;
+    message: string;
+  }) => {
+    // POST user message
+    const userMsg = await postMessage({
+      conversation_id: conversationId,
+      user_id: userId,
+      role: MessageRole.User,
+      message,
+      safety_flag: true,
+      safety_category: SafetyCategory.None,
+    });
+    return { conversationId, userMessage: userMsg };
+  },
+);
+
+export const sendBotMessageAsync = createAsyncThunk(
+  "chat/sendBotMessage",
+  async ({
+    conversationId,
     message,
   }: {
     conversationId: string;
     message: string;
   }) => {
-    const result = await sendMessage(conversationId, message);
-    return { conversationId, ...result };
+    const botMsg = await postMessage({
+      conversation_id: conversationId,
+      user_id: null,
+      role: MessageRole.System,
+      message,
+      safety_flag: true,
+      safety_category: SafetyCategory.None,
+    });
+    return { conversationId, botMessage: botMsg };
   },
 );
 
@@ -108,7 +148,6 @@ const chatSlice = createSlice({
     builder.addCase(loadConversations.fulfilled, (state, action) => {
       state.loadingConversations = false;
       state.conversations = action.payload;
-      // Set first conversation as current if none selected
       if (!state.currentConversationId && action.payload.length > 0) {
         state.currentConversationId = action.payload[0].id;
       }
@@ -125,64 +164,68 @@ const chatSlice = createSlice({
     });
     builder.addCase(loadMessages.fulfilled, (state, action) => {
       state.loadingMessages = false;
-      if (state.skipNextLoadMessages) {
-        state.skipNextLoadMessages = false;
-        return;
+      const { conversationId, messages, cached } = action.payload;
+      if (!cached) {
+        state.messagesByConversation[conversationId] = messages;
       }
-      state.currentMessages = action.payload.messages;
     });
     builder.addCase(loadMessages.rejected, (state, action) => {
       state.loadingMessages = false;
       state.error = action.error.message || "Failed to load messages";
     });
 
-    // Send message
-    builder.addCase(sendMessageAsync.pending, (state, action) => {
+    // Send user message
+    builder.addCase(sendMessageAsync.pending, (state) => {
       state.sendingMessage = true;
       state.error = null;
-      // Add user message immediately (optimistic update)
-      const userMessage: Message = {
-        id: Date.now(),
-        text: action.meta.arg.message,
-        sender: "user",
-        timestamp: new Date(),
-      };
-      state.currentMessages.push(userMessage);
     });
     builder.addCase(sendMessageAsync.fulfilled, (state, action) => {
-      state.sendingMessage = false;
-      // Add only bot message (user message already added in pending)
-      state.currentMessages.push(action.payload.botMessage);
+      const { conversationId, userMessage } = action.payload;
+      if (!state.messagesByConversation[conversationId]) {
+        state.messagesByConversation[conversationId] = [];
+      }
+      state.messagesByConversation[conversationId].push(userMessage);
     });
     builder.addCase(sendMessageAsync.rejected, (state, action) => {
       state.sendingMessage = false;
       state.error = action.error.message || "Failed to send message";
-      // Optionally: Remove the optimistically added user message on error
-      // state.currentMessages.pop();
+    });
+
+    // Send bot/system message
+    builder.addCase(sendBotMessageAsync.fulfilled, (state, action) => {
+      state.sendingMessage = false;
+      const { conversationId, botMessage } = action.payload;
+      if (!state.messagesByConversation[conversationId]) {
+        state.messagesByConversation[conversationId] = [];
+      }
+      state.messagesByConversation[conversationId].push(botMessage);
+    });
+    builder.addCase(sendBotMessageAsync.rejected, (state, action) => {
+      state.sendingMessage = false;
+      state.error = action.error.message || "Failed to send bot message";
     });
 
     // Create conversation
     builder.addCase(createNewConversation.fulfilled, (state, action) => {
       state.conversations.push(action.payload);
       state.currentConversationId = action.payload.id;
-      state.currentMessages = [];
-      state.skipNextLoadMessages = true;
+      state.messagesByConversation[action.payload.id] = [];
     });
 
-    // Delete conversation — optimistic: remove immediately on pending
+    // Delete conversation — optimistic
     builder.addCase(deleteConversationAsync.pending, (state, action) => {
       const deletedId = action.meta.arg;
       state.conversations = state.conversations.filter(
         (c) => c.id !== deletedId,
       );
+      delete state.messagesByConversation[deletedId];
       if (state.currentConversationId === deletedId) {
         state.currentConversationId =
           state.conversations.length > 0 ? state.conversations[0].id : null;
-        state.currentMessages = [];
       }
     });
     builder.addCase(deleteConversationAsync.fulfilled, () => {
-      // state already updated optimistically in pending
+      // already handled optimistically
     });
   },
 });

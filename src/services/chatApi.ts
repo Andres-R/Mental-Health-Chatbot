@@ -1,42 +1,12 @@
-import type { Conversation, Message } from "../types/chat";
+import type { Conversation, ApiMessage } from "../types/chat";
+import { MessageRole, SafetyCategory } from "../types/chat";
 
-const mockMessages: Record<number, Message[]> = {
-  1: [
-    {
-      id: 1,
-      text: "Hi, I've been feeling anxious lately.",
-      sender: "user",
-      timestamp: new Date(),
-    },
-    {
-      id: 2,
-      text: "I'm here to help. Can you tell me more about what's been causing your anxiety?",
-      sender: "bot",
-      timestamp: new Date(),
-    },
-  ],
-  2: [
-    {
-      id: 1,
-      text: "I'm having trouble sleeping at night.",
-      sender: "user",
-      timestamp: new Date(),
-    },
-    {
-      id: 2,
-      text: "Sleep is very important for mental health. Let's explore some strategies that might help you.",
-      sender: "bot",
-      timestamp: new Date(),
-    },
-  ],
-  3: [],
-};
+const baseUrl = import.meta.env.VITE_BE_BASE_URL;
 
 /**
  * Delete a conversation by id
  */
 export const deleteConversation = async (id: string): Promise<void> => {
-  const baseUrl = import.meta.env.VITE_BE_BASE_URL;
   const response = await fetch(
     `${baseUrl}/v1/conversations/${encodeURIComponent(id)}`,
     { method: "DELETE" },
@@ -52,7 +22,6 @@ export const deleteConversation = async (id: string): Promise<void> => {
 export const fetchConversations = async (
   userId: string,
 ): Promise<Conversation[]> => {
-  const baseUrl = import.meta.env.VITE_BE_BASE_URL;
   const response = await fetch(
     `${baseUrl}/v1/conversations?userId=${encodeURIComponent(userId)}`,
   );
@@ -63,68 +32,40 @@ export const fetchConversations = async (
 };
 
 /**
- * Fetch messages for a specific conversation
- * TODO: Replace with actual API call
+ * Fetch messages for a conversation by conversation id (path param)
  */
-export const fetchConversationMessages = async (
+export const fetchMessages = async (
   conversationId: string,
-): Promise<Message[]> => {
-  // Simulate API delay
-  await new Promise((resolve) => setTimeout(resolve, 300));
-
-  // TODO: Make actual API call
-  // const response = await fetch(`/api/conversations/${conversationId}/messages`);
-  // const data = await response.json();
-  // return data;
-
-  // Return mock data for now
-  return mockMessages[parseInt(conversationId, 10)] || [];
+): Promise<ApiMessage[]> => {
+  const response = await fetch(
+    `${baseUrl}/v1/messages/${encodeURIComponent(conversationId)}`,
+  );
+  if (!response.ok) {
+    throw new Error(`Failed to fetch messages: ${response.statusText}`);
+  }
+  return response.json();
 };
 
 /**
- * Send a message in a conversation
- * TODO: Replace with actual API call
+ * Post a message to a conversation
  */
-export const sendMessage = async (
-  _conversationId: string,
-  message: string,
-): Promise<{ userMessage: Message; botMessage: Message }> => {
-  // Simulate API delay
-  await new Promise((resolve) => setTimeout(resolve, 3000));
-
-  const userMessage: Message = {
-    id: Date.now(),
-    text: message,
-    sender: "user",
-    timestamp: new Date(),
-  };
-
-  // Mock bot responses
-  const botResponses = [
-    "Thank you for sharing that with me. How does that make you feel?",
-    "I understand. That sounds challenging. Can you tell me more?",
-    "It's completely normal to feel this way. What helps you cope?",
-    "I'm here to listen. Would you like to explore this further?",
-    "That's a great insight. How long have you been experiencing this?",
-    "Remember, it's okay to take things one step at a time.",
-  ];
-
-  const botMessage: Message = {
-    id: Date.now() + 1,
-    text: botResponses[Math.floor(Math.random() * botResponses.length)],
-    sender: "bot",
-    timestamp: new Date(),
-  };
-
-  // TODO: Make actual API call
-  // const response = await fetch(`/api/conversations/${conversationId}/messages`, {
-  //   method: 'POST',
-  //   headers: { 'Content-Type': 'application/json' },
-  //   body: JSON.stringify({ message })
-  // });
-  // return await response.json();
-
-  return { userMessage, botMessage };
+export const postMessage = async (payload: {
+  conversation_id: string;
+  user_id: string | null;
+  role: MessageRole;
+  message: string;
+  safety_flag: boolean;
+  safety_category: SafetyCategory;
+}): Promise<ApiMessage> => {
+  const response = await fetch(`${baseUrl}/v1/messages`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to post message: ${response.statusText}`);
+  }
+  return response.json();
 };
 
 /**
@@ -139,7 +80,6 @@ export const createConversation = async ({
   title: string | null;
   status: string;
 }): Promise<Conversation> => {
-  const baseUrl = import.meta.env.VITE_BE_BASE_URL;
   const response = await fetch(`${baseUrl}/v1/conversations`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -152,3 +92,5 @@ export const createConversation = async ({
   const now = new Date().toISOString();
   return { id: data.id, userId, title, status, createdAt: now, updatedAt: now };
 };
+
+export { MessageRole, SafetyCategory };

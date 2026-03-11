@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Box,
@@ -19,11 +19,13 @@ import {
   loadConversations,
   loadMessages,
   sendMessageAsync,
+  sendBotMessageAsync,
   createNewConversation,
   setCurrentConversation,
   clearUserId,
   deleteConversationAsync,
 } from "../store/chatSlice";
+import { MessageRole } from "../types/chat";
 
 function Home() {
   const navigate = useNavigate();
@@ -35,10 +37,17 @@ function Home() {
   const {
     conversations,
     currentConversationId,
-    currentMessages,
-    sendingMessage,
+    messagesByConversation,
     userId,
   } = useAppSelector((state) => state.chat);
+
+  const currentMessages = useMemo(
+    () =>
+      currentConversationId
+        ? (messagesByConversation[currentConversationId] ?? [])
+        : [],
+    [currentConversationId, messagesByConversation],
+  );
 
   // Resolve userId from Redux state or localStorage fallback
   const resolvedUserId = userId ?? localStorage.getItem("userId");
@@ -66,26 +75,6 @@ function Home() {
     scrollToBottom();
   }, [currentMessages]);
 
-  // Show loading animation after 1 second delay
-  useEffect(() => {
-    let timeoutId: ReturnType<typeof setTimeout>;
-
-    if (sendingMessage) {
-      timeoutId = setTimeout(() => {
-        setShowLoadingAnimation(true);
-      }, 1000);
-    } else {
-      // Reset immediately when done sending
-      timeoutId = setTimeout(() => {
-        setShowLoadingAnimation(false);
-      }, 0);
-    }
-
-    return () => {
-      clearTimeout(timeoutId);
-    };
-  }, [sendingMessage]);
-
   const handleNewChat = () => {
     if (!resolvedUserId) return;
     dispatch(createNewConversation({ userId: resolvedUserId, title: null }));
@@ -98,12 +87,11 @@ function Home() {
   };
 
   const handleSendMessage = async () => {
-    if (!inputMessage.trim()) return;
+    if (!inputMessage.trim() || !resolvedUserId) return;
 
     let conversationId = currentConversationId;
 
     if (!conversationId) {
-      if (!resolvedUserId) return;
       try {
         const result = await dispatch(
           createNewConversation({ userId: resolvedUserId, title: null }),
@@ -114,8 +102,47 @@ function Home() {
       }
     }
 
-    dispatch(sendMessageAsync({ conversationId, message: inputMessage }));
+    const messageText = inputMessage;
     setInputMessage("");
+
+    // POST user message
+    await dispatch(
+      sendMessageAsync({
+        conversationId,
+        userId: resolvedUserId,
+        message: messageText,
+      }),
+    ).unwrap();
+
+    // Show loading animation after a 1-second delay
+    const animationTimeout = setTimeout(() => {
+      setShowLoadingAnimation(true);
+    }, 1000);
+
+    // Simulate a delay before the bot responds
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+
+    clearTimeout(animationTimeout);
+    setShowLoadingAnimation(false);
+
+    // Pick a random bot response and POST it
+    const botResponses = [
+      "Thank you for sharing that with me. How does that make you feel?",
+      "I understand. That sounds challenging. Can you tell me more?",
+      "It's completely normal to feel this way. What helps you cope?",
+      "I'm here to listen. Would you like to explore this further?",
+      "That's a great insight. How long have you been experiencing this?",
+      "Remember, it's okay to take things one step at a time.",
+    ];
+    const botMessage =
+      botResponses[Math.floor(Math.random() * botResponses.length)];
+
+    dispatch(
+      sendBotMessageAsync({
+        conversationId,
+        message: botMessage,
+      }),
+    );
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -125,8 +152,11 @@ function Home() {
     }
   };
 
-  const formatTime = (date: Date) => {
-    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const formatTime = (dateStr: string) => {
+    return new Date(dateStr).toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
   };
 
   return (
@@ -300,20 +330,21 @@ function Home() {
             gap: 2,
           }}
         >
-          {currentMessages.map((message) => (
+          {currentMessages.map((msg) => (
             <Box
-              key={message.id}
+              key={msg.id}
               sx={{
                 display: "flex",
                 justifyContent:
-                  message.sender === "user" ? "flex-end" : "flex-start",
+                  msg.role === MessageRole.User ? "flex-end" : "flex-start",
               }}
             >
               <Paper
                 sx={{
                   maxWidth: "70%",
                   p: 1.25,
-                  bgcolor: message.sender === "user" ? "#60a5fa" : "#242424",
+                  bgcolor:
+                    msg.role === MessageRole.User ? "#60a5fa" : "#242424",
                   color: "white",
                   borderRadius: 2,
                   display: "flex",
@@ -324,11 +355,11 @@ function Home() {
                 <Typography
                   variant="body1"
                   sx={{
-                    textAlign: message.sender === "user" ? "right" : "left",
+                    textAlign: msg.role === MessageRole.User ? "right" : "left",
                     flex: 1,
                   }}
                 >
-                  {message.text}
+                  {msg.message}
                 </Typography>
                 <Typography
                   variant="caption"
@@ -339,7 +370,7 @@ function Home() {
                     alignSelf: "flex-end",
                   }}
                 >
-                  {formatTime(message.timestamp)}
+                  {formatTime(msg.created_at)}
                 </Typography>
               </Paper>
             </Box>

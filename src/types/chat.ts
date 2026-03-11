@@ -1,16 +1,3 @@
-export interface Message {
-  id: number;
-  text: string;
-  sender: "user" | "bot";
-  timestamp: Date;
-}
-
-export interface Chat {
-  id: number;
-  name: string;
-  messages: Message[];
-}
-
 export interface Conversation {
   id: string;
   userId: string;
@@ -18,6 +5,17 @@ export interface Conversation {
   status: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface Message {
+  id: string;
+  conversation_id: string;
+  user_id: string | null;
+  role: MessageRole;
+  message: string;
+  created_at: string;
+  safety_flag: boolean;
+  safety_category: SafetyCategory;
 }
 
 export const MessageRole = {
@@ -34,14 +32,3 @@ export const SafetyCategory = {
 } as const;
 export type SafetyCategory =
   (typeof SafetyCategory)[keyof typeof SafetyCategory];
-
-export interface ApiMessage {
-  id: string;
-  conversation_id: string;
-  user_id: string | null;
-  role: MessageRole;
-  message: string;
-  created_at: string;
-  safety_flag: boolean;
-  safety_category: SafetyCategory;
-}

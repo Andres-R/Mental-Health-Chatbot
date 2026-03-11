@@ -3,7 +3,7 @@ import {
   createAsyncThunk,
   type PayloadAction,
 } from "@reduxjs/toolkit";
-import type { Conversation, ApiMessage } from "../types/chat";
+import type { Conversation, Message } from "../types/chat";
 import { MessageRole, SafetyCategory } from "../types/chat";
 import {
   fetchConversations,
@@ -11,13 +11,14 @@ import {
   postMessage,
   createConversation,
   deleteConversation,
+  patchConversation,
 } from "../services/chatApi";
 
 interface ChatState {
   conversations: Conversation[];
   currentConversationId: string | null;
   /** Cached messages keyed by conversationId */
-  messagesByConversation: Record<string, ApiMessage[]>;
+  messagesByConversation: Record<string, Message[]>;
   loadingConversations: boolean;
   loadingMessages: boolean;
   sendingMessage: boolean;
@@ -118,6 +119,13 @@ export const deleteConversationAsync = createAsyncThunk(
   async (id: string) => {
     await deleteConversation(id);
     return id;
+  },
+);
+
+export const archiveConversationAsync = createAsyncThunk(
+  "chat/archiveConversation",
+  async ({ id, status }: { id: string; status: string }) => {
+    return await patchConversation(id, status);
   },
 );
 
@@ -226,6 +234,25 @@ const chatSlice = createSlice({
     });
     builder.addCase(deleteConversationAsync.fulfilled, () => {
       // already handled optimistically
+    });
+
+    // Archive / unarchive conversation
+    builder.addCase(archiveConversationAsync.fulfilled, (state, action) => {
+      const updated = action.payload;
+      const idx = state.conversations.findIndex((c) => c.id === updated.id);
+      if (idx !== -1) {
+        state.conversations[idx] = updated;
+      }
+      // If the archived conversation was selected, clear selection
+      if (
+        updated.status === "archived" &&
+        state.currentConversationId === updated.id
+      ) {
+        const firstActive = state.conversations.find(
+          (c) => c.status === "active" && c.id !== updated.id,
+        );
+        state.currentConversationId = firstActive?.id ?? null;
+      }
     });
   },
 });

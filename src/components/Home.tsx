@@ -14,6 +14,8 @@ import {
 } from "@mui/material";
 import SendIcon from "@mui/icons-material/Send";
 import DeleteIcon from "@mui/icons-material/Delete";
+import ArchiveIcon from "@mui/icons-material/Archive";
+import UnarchiveIcon from "@mui/icons-material/Unarchive";
 import { useAppDispatch, useAppSelector } from "../store/hooks";
 import {
   loadConversations,
@@ -24,6 +26,7 @@ import {
   setCurrentConversation,
   clearUserId,
   deleteConversationAsync,
+  archiveConversationAsync,
 } from "../store/chatSlice";
 import { MessageRole } from "../types/chat";
 
@@ -223,52 +226,164 @@ function Home() {
             your chats
           </Typography>
         </Box>
-        <List sx={{ flex: 1, overflow: "hidden", py: 0 }}>
-          {conversations.map((chat) => (
-            <ListItem
-              key={chat.id}
-              disablePadding
-              secondaryAction={
-                currentConversationId === chat.id ? (
-                  <IconButton
-                    size="small"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      dispatch(deleteConversationAsync(chat.id));
+        <List sx={{ overflow: "hidden", py: 0 }}>
+          {conversations
+            .filter((chat) => chat.status === "active")
+            .map((chat) => (
+              <ListItem
+                key={chat.id}
+                disablePadding
+                secondaryAction={
+                  currentConversationId === chat.id ? (
+                    <Box sx={{ display: "flex", gap: 0.25 }}>
+                      <IconButton
+                        size="small"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          dispatch(
+                            archiveConversationAsync({
+                              id: chat.id,
+                              status: "archived",
+                            }),
+                          );
+                        }}
+                        sx={{ color: "#666", "&:hover": { color: "#f59e0b" } }}
+                      >
+                        <ArchiveIcon fontSize="small" />
+                      </IconButton>
+                      <IconButton
+                        size="small"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          dispatch(deleteConversationAsync(chat.id));
+                        }}
+                        sx={{ color: "#666", "&:hover": { color: "#ef4444" } }}
+                      >
+                        <DeleteIcon fontSize="small" />
+                      </IconButton>
+                    </Box>
+                  ) : undefined
+                }
+              >
+                <ListItemButton
+                  selected={currentConversationId === chat.id}
+                  onClick={() => dispatch(setCurrentConversation(chat.id))}
+                  sx={{
+                    py: 0.5,
+                    px: 1.25,
+                    pr: currentConversationId === chat.id ? 8 : 1.25,
+                    "&.Mui-selected": {
+                      bgcolor: "#1a1a1a",
+                      borderLeft: "3px solid #60a5fa",
+                    },
+                    "&:hover": {
+                      bgcolor: "#2a2a2a",
+                    },
+                  }}
+                >
+                  <ListItemText
+                    primary={chat.title ?? "Untitled"}
+                    primaryTypographyProps={{
+                      fontWeight: currentConversationId === chat.id ? 600 : 400,
                     }}
-                    sx={{ color: "#666", "&:hover": { color: "#ef4444" } }}
-                  >
-                    <DeleteIcon fontSize="small" />
-                  </IconButton>
-                ) : undefined
-              }
-            >
-              <ListItemButton
-                selected={currentConversationId === chat.id}
-                onClick={() => dispatch(setCurrentConversation(chat.id))}
+                  />
+                </ListItemButton>
+              </ListItem>
+            ))}
+        </List>
+
+        {/* Archived Section */}
+        {conversations.some((chat) => chat.status === "archived") && (
+          <>
+            <Box sx={{ px: 1.5, pt: 1.5, pb: 0.75 }}>
+              <Typography
+                variant="caption"
                 sx={{
-                  py: 0.5,
-                  px: 1.25,
-                  pr: currentConversationId === chat.id ? 5 : 1.25,
-                  "&.Mui-selected": {
-                    bgcolor: "#1a1a1a",
-                    borderLeft: "3px solid #60a5fa",
-                  },
-                  "&:hover": {
-                    bgcolor: "#2a2a2a",
-                  },
+                  color: "#888",
+                  fontSize: "0.75rem",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.05em",
                 }}
               >
-                <ListItemText
-                  primary={chat.title ?? "Untitled"}
-                  primaryTypographyProps={{
-                    fontWeight: currentConversationId === chat.id ? 600 : 400,
-                  }}
-                />
-              </ListItemButton>
-            </ListItem>
-          ))}
-        </List>
+                archived
+              </Typography>
+            </Box>
+            <List sx={{ flex: 1, overflow: "hidden", py: 0 }}>
+              {conversations
+                .filter((chat) => chat.status === "archived")
+                .map((chat) => (
+                  <ListItem
+                    key={chat.id}
+                    disablePadding
+                    secondaryAction={
+                      currentConversationId === chat.id ? (
+                        <Box sx={{ display: "flex", gap: 0.25 }}>
+                          <IconButton
+                            size="small"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              dispatch(
+                                archiveConversationAsync({
+                                  id: chat.id,
+                                  status: "active",
+                                }),
+                              );
+                            }}
+                            sx={{
+                              color: "#666",
+                              "&:hover": { color: "#34d399" },
+                            }}
+                          >
+                            <UnarchiveIcon fontSize="small" />
+                          </IconButton>
+                          <IconButton
+                            size="small"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              dispatch(deleteConversationAsync(chat.id));
+                            }}
+                            sx={{
+                              color: "#666",
+                              "&:hover": { color: "#ef4444" },
+                            }}
+                          >
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        </Box>
+                      ) : undefined
+                    }
+                  >
+                    <ListItemButton
+                      selected={currentConversationId === chat.id}
+                      onClick={() => dispatch(setCurrentConversation(chat.id))}
+                      sx={{
+                        py: 0.5,
+                        px: 1.25,
+                        pr: currentConversationId === chat.id ? 8 : 1.25,
+                        "&.Mui-selected": {
+                          bgcolor: "#1a1a1a",
+                          borderLeft: "3px solid #60a5fa",
+                        },
+                        "&:hover": {
+                          bgcolor: "#2a2a2a",
+                        },
+                      }}
+                    >
+                      <ListItemText
+                        primary={chat.title ?? "Untitled"}
+                        primaryTypographyProps={{
+                          fontWeight:
+                            currentConversationId === chat.id ? 600 : 400,
+                          fontStyle: "italic",
+                          color: "#888",
+                        }}
+                      />
+                    </ListItemButton>
+                  </ListItem>
+                ))}
+            </List>
+          </>
+        )}
       </Box>
 
       {/* Main Chat Area */}

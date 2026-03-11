@@ -1,4 +1,4 @@
-import type { Conversation, ApiMessage } from "../types/chat";
+import type { Conversation, Message } from "../types/chat";
 import { MessageRole, SafetyCategory } from "../types/chat";
 
 const baseUrl = import.meta.env.VITE_BE_BASE_URL;
@@ -36,7 +36,7 @@ export const fetchConversations = async (
  */
 export const fetchMessages = async (
   conversationId: string,
-): Promise<ApiMessage[]> => {
+): Promise<Message[]> => {
   const response = await fetch(
     `${baseUrl}/v1/messages/${encodeURIComponent(conversationId)}`,
   );
@@ -56,7 +56,7 @@ export const postMessage = async (payload: {
   message: string;
   safety_flag: boolean;
   safety_category: SafetyCategory;
-}): Promise<ApiMessage> => {
+}): Promise<Message> => {
   const response = await fetch(`${baseUrl}/v1/messages`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -91,6 +91,27 @@ export const createConversation = async ({
   const data: { id: string } = await response.json();
   const now = new Date().toISOString();
   return { id: data.id, userId, title, status, createdAt: now, updatedAt: now };
+};
+
+/**
+ * Update a conversation's status (archive / unarchive)
+ */
+export const patchConversation = async (
+  id: string,
+  status: string,
+): Promise<Conversation> => {
+  const response = await fetch(
+    `${baseUrl}/v1/conversations/${encodeURIComponent(id)}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status }),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(`Failed to update conversation: ${response.statusText}`);
+  }
+  return response.json();
 };
 
 export { MessageRole, SafetyCategory };

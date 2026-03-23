@@ -12,7 +12,7 @@ import {
 } from "@mui/material";
 import { useDispatch } from "react-redux";
 import type { AppDispatch } from "../store/store";
-import { setUserId } from "../store/chatSlice";
+import { resetChatState, setUserId } from "../store/chatSlice";
 
 function Login() {
   const [email, setEmail] = useState("");
@@ -61,6 +61,23 @@ function Login() {
           : "Login failed. Please try again.",
       );
     }
+  };
+
+  const handleGuestLogin = () => {
+    // Clear any previous guest data
+    localStorage.removeItem("mh_guest_mode");
+    localStorage.removeItem("mh_conversations");
+    localStorage.removeItem("mh_messages");
+    localStorage.removeItem("userId");
+
+    dispatch(resetChatState());
+
+    const guestId = `guest-${Date.now()}`;
+    localStorage.setItem("userId", guestId);
+    localStorage.setItem("mh_guest_mode", "true");
+
+    dispatch(setUserId(guestId));
+    navigate("/home");
   };
 
   return (
@@ -165,6 +182,28 @@ function Login() {
                 }}
               >
                 Login
+              </Button>
+
+              <Button
+                fullWidth
+                size="large"
+                onClick={handleGuestLogin}
+                sx={{
+                  mb: 2,
+                  py: 1.5,
+                  borderRadius: 3,
+                  bgcolor: "#242424",
+                  color: "white",
+                  fontWeight: 600,
+                  fontSize: "1rem",
+                  textTransform: "none",
+                  border: "1px solid #3a3a3a",
+                  "&:hover": {
+                    bgcolor: "#2c2c2c",
+                  },
+                }}
+              >
+                Continue as Guest
               </Button>
 
               <Box sx={{ textAlign: "center", mt: 3 }}>

@@ -24,11 +24,18 @@ import {
   sendBotMessageAsync,
   createNewConversation,
   setCurrentConversation,
-  clearUserId,
+  resetChatState,
   deleteConversationAsync,
   archiveConversationAsync,
 } from "../store/chatSlice";
-import { MessageRole } from "../types/chat";
+import { MessageRole, SafetyCategory } from "../types/chat";
+
+function clearGuestSessionData() {
+  localStorage.removeItem("userId");
+  localStorage.removeItem("mh_guest_mode");
+  localStorage.removeItem("mh_conversations");
+  localStorage.removeItem("mh_messages");
+}
 
 function Home() {
   const navigate = useNavigate();
@@ -84,8 +91,8 @@ function Home() {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem("userId");
-    dispatch(clearUserId());
+    clearGuestSessionData();
+    dispatch(resetChatState());
     navigate("/");
   };
 
@@ -105,40 +112,55 @@ function Home() {
       }
     }
 
-    const messageText = inputMessage;
+    const messageText = inputMessage.trim();
     setInputMessage("");
 
-    // POST user message
-    await dispatch(
-      sendMessageAsync({
-        conversationId,
-        userId: resolvedUserId,
-        message: messageText,
-      }),
-    ).unwrap();
+    let sentMessageResult;
+    try {
+      sentMessageResult = await dispatch(
+        sendMessageAsync({
+          conversationId,
+          userId: resolvedUserId,
+          message: messageText,
+        }),
+      ).unwrap();
+    } catch {
+      return;
+    }
+
+    const safetyCategory = sentMessageResult.userMessage.safety_category;
 
     // Show loading animation after a 1-second delay
     const animationTimeout = setTimeout(() => {
       setShowLoadingAnimation(true);
-    }, 1000);
+    }, 600);
 
-    // Simulate a delay before the bot responds
-    await new Promise((resolve) => setTimeout(resolve, 3000));
+    await new Promise((resolve) => setTimeout(resolve, 1800));
 
     clearTimeout(animationTimeout);
     setShowLoadingAnimation(false);
 
-    // Pick a random bot response and POST it
-    const botResponses = [
+    const normalResponses = [
       "Thank you for sharing that with me. How does that make you feel?",
       "I understand. That sounds challenging. Can you tell me more?",
       "It's completely normal to feel this way. What helps you cope?",
       "I'm here to listen. Would you like to explore this further?",
-      "That's a great insight. How long have you been experiencing this?",
-      "Remember, it's okay to take things one step at a time.",
+      "That sounds really important. What has this been like for you lately?",
+      "You do not have to handle everything at once. What feels hardest right now?",
     ];
-    const botMessage =
-      botResponses[Math.floor(Math.random() * botResponses.length)];
+
+    let botMessage = "";
+
+    if (safetyCategory === SafetyCategory.SelfHarm) {
+      botMessage =
+        "I'm really sorry you're going through this. You deserve immediate support from a real person right now. If you may act on these feelings or are in immediate danger, call 911 now. If you are in the U.S. or Canada, call or text 988 for the Suicide & Crisis Lifeline right away. If you are elsewhere, please contact your local emergency services or crisis hotline now, and reach out to someone you trust to stay with you.";
+    } else if (safetyCategory === SafetyCategory.Violence) {
+      botMessage =
+        "I can't help with hurting someone. Please step away from the situation for a moment, put distance between yourself and anyone involved, and contact emergency services if there is immediate danger. If you want, focus on staying safe right now and tell me what happened without names or violent details.";
+    } else {
+      botMessage =
+        normalResponses[Math.floor(Math.random() * normalResponses.length)];
+    }
 
     dispatch(
       sendBotMessageAsync({
@@ -400,37 +422,69 @@ function Home() {
         <Box
           sx={{
             display: "flex",
-            justifyContent: "flex-end",
+            justifyContent: "space-between",
             alignItems: "center",
             p: 0.5,
             pr: 1.5,
+            pl: 1.5,
             borderBottom: "1px solid #333",
             flexShrink: 0,
           }}
         >
-          <Button
-            onClick={handleLogout}
-            sx={{
-              py: 1,
-              px: 3,
-              borderRadius: 2,
-              background: "transparent",
-              border: "2px solid transparent",
-              backgroundImage:
-                "linear-gradient(#1a1a1a, #1a1a1a), linear-gradient(135deg, #60a5fa, #34d399)",
-              backgroundOrigin: "border-box",
-              backgroundClip: "padding-box, border-box",
-              color: "white",
-              fontWeight: 600,
-              textTransform: "none",
-              "&:hover": {
+          <Typography variant="body2" sx={{ color: "#a0a0a0" }}>
+            Supportive chatbot prototype — not a replacement for professional
+            care.
+          </Typography>
+
+          <Box sx={{ display: "flex", gap: 1 }}>
+            <Button
+              onClick={() => navigate("/resources")}
+              sx={{
+                py: 1,
+                px: 3,
+                borderRadius: 2,
+                background: "transparent",
+                border: "2px solid transparent",
                 backgroundImage:
-                  "linear-gradient(#242424, #242424), linear-gradient(135deg, #60a5fa, #34d399)",
-              },
-            }}
-          >
-            Logout
-          </Button>
+                  "linear-gradient(#1a1a1a, #1a1a1a), linear-gradient(135deg, #60a5fa, #34d399)",
+                backgroundOrigin: "border-box",
+                backgroundClip: "padding-box, border-box",
+                color: "white",
+                fontWeight: 600,
+                textTransform: "none",
+                "&:hover": {
+                  backgroundImage:
+                    "linear-gradient(#242424, #242424), linear-gradient(135deg, #60a5fa, #34d399)",
+                },
+              }}
+            >
+              Resources
+            </Button>
+
+            <Button
+              onClick={handleLogout}
+              sx={{
+                py: 1,
+                px: 3,
+                borderRadius: 2,
+                background: "transparent",
+                border: "2px solid transparent",
+                backgroundImage:
+                  "linear-gradient(#1a1a1a, #1a1a1a), linear-gradient(135deg, #60a5fa, #34d399)",
+                backgroundOrigin: "border-box",
+                backgroundClip: "padding-box, border-box",
+                color: "white",
+                fontWeight: 600,
+                textTransform: "none",
+                "&:hover": {
+                  backgroundImage:
+                    "linear-gradient(#242424, #242424), linear-gradient(135deg, #60a5fa, #34d399)",
+                },
+              }}
+            >
+              Logout
+            </Button>
+          </Box>
         </Box>
 
         {/* Messages Area */}
@@ -472,6 +526,7 @@ function Home() {
                   sx={{
                     textAlign: msg.role === MessageRole.User ? "right" : "left",
                     flex: 1,
+                    whiteSpace: "pre-wrap",
                   }}
                 >
                   {msg.message}
@@ -577,7 +632,7 @@ function Home() {
               placeholder="Type your message..."
               value={inputMessage}
               onChange={(e) => setInputMessage(e.target.value)}
-              onKeyPress={handleKeyPress}
+              onKeyDown={handleKeyPress}
               variant="outlined"
               sx={{
                 "& .MuiOutlinedInput-root": {

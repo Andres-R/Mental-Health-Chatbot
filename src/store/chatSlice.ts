@@ -37,10 +37,36 @@ const initialState: ChatState = {
   userId: null,
 };
 
+// Guest mode localStorage helpers
+function isGuestMode(): boolean {
+  return localStorage.getItem("mh_guest_mode") === "true";
+}
+
+function getGuestConversations(): Conversation[] {
+  const data = localStorage.getItem("mh_conversations");
+  return data ? JSON.parse(data) : [];
+}
+
+function saveGuestConversations(conversations: Conversation[]): void {
+  localStorage.setItem("mh_conversations", JSON.stringify(conversations));
+}
+
+function getGuestMessages(): Record<string, Message[]> {
+  const data = localStorage.getItem("mh_messages");
+  return data ? JSON.parse(data) : {};
+}
+
+function saveGuestMessages(messages: Record<string, Message[]>): void {
+  localStorage.setItem("mh_messages", JSON.stringify(messages));
+}
+
 // Async thunks
 export const loadConversations = createAsyncThunk(
   "chat/loadConversations",
   async (userId: string) => {
+    if (isGuestMode()) {
+      return getGuestConversations();
+    }
     return await fetchConversations(userId);
   },
 );
@@ -55,6 +81,14 @@ export const loadMessages = createAsyncThunk(
         conversationId,
         messages: state.chat.messagesByConversation[conversationId],
         cached: true,
+      };
+    }
+    if (isGuestMode()) {
+      const allMessages = getGuestMessages();
+      return {
+        conversationId,
+        messages: allMessages[conversationId] ?? [],
+        cached: false,
       };
     }
     const messages = await fetchMessages(conversationId);
@@ -73,7 +107,23 @@ export const sendMessageAsync = createAsyncThunk(
     userId: string;
     message: string;
   }) => {
-    // POST user message
+    if (isGuestMode()) {
+      const userMsg: Message = {
+        id: `msg-${Date.now()}`,
+        conversation_id: conversationId,
+        user_id: userId,
+        role: MessageRole.User,
+        message,
+        created_at: new Date().toISOString(),
+        safety_flag: true,
+        safety_category: SafetyCategory.None,
+      };
+      const allMessages = getGuestMessages();
+      if (!allMessages[conversationId]) allMessages[conversationId] = [];
+      allMessages[conversationId].push(userMsg);
+      saveGuestMessages(allMessages);
+      return { conversationId, userMessage: userMsg };
+    }
     const userMsg = await postMessage({
       conversation_id: conversationId,
       user_id: userId,
@@ -95,6 +145,23 @@ export const sendBotMessageAsync = createAsyncThunk(
     conversationId: string;
     message: string;
   }) => {
+    if (isGuestMode()) {
+      const botMsg: Message = {
+        id: `msg-${Date.now()}-bot`,
+        conversation_id: conversationId,
+        user_id: null,
+        role: MessageRole.System,
+        message,
+        created_at: new Date().toISOString(),
+        safety_flag: true,
+        safety_category: SafetyCategory.None,
+      };
+      const allMessages = getGuestMessages();
+      if (!allMessages[conversationId]) allMessages[conversationId] = [];
+      allMessages[conversationId].push(botMsg);
+      saveGuestMessages(allMessages);
+      return { conversationId, botMessage: botMsg };
+    }
     const botMsg = await postMessage({
       conversation_id: conversationId,
       user_id: null,
@@ -110,6 +177,21 @@ export const sendBotMessageAsync = createAsyncThunk(
 export const createNewConversation = createAsyncThunk(
   "chat/createConversation",
   async ({ userId, title }: { userId: string; title: string | null }) => {
+    if (isGuestMode()) {
+      const now = new Date().toISOString();
+      const conversation: Conversation = {
+        id: `conv-${Date.now()}`,
+        userId,
+        title,
+        status: "active",
+        createdAt: now,
+        updatedAt: now,
+      };
+      const conversations = getGuestConversations();
+      conversations.push(conversation);
+      saveGuestConversations(conversations);
+      return conversation;
+    }
     return await createConversation({ userId, title, status: "active" });
   },
 );
@@ -117,6 +199,14 @@ export const createNewConversation = createAsyncThunk(
 export const deleteConversationAsync = createAsyncThunk(
   "chat/deleteConversation",
   async (id: string) => {
+    if (isGuestMode()) {
+      const conversations = getGuestConversations();
+      saveGuestConversations(conversations.filter((c) => c.id !== id));
+      const allMessages = getGuestMessages();
+      delete allMessages[id];
+      saveGuestMessages(allMessages);
+      return id;
+    }
     await deleteConversation(id);
     return id;
   },
@@ -125,6 +215,19 @@ export const deleteConversationAsync = createAsyncThunk(
 export const archiveConversationAsync = createAsyncThunk(
   "chat/archiveConversation",
   async ({ id, status }: { id: string; status: string }) => {
+    if (isGuestMode()) {
+      const conversations = getGuestConversations();
+      const idx = conversations.findIndex((c) => c.id === id);
+      if (idx !== -1) {
+        conversations[idx] = {
+          ...conversations[idx],
+          status,
+          updatedAt: new Date().toISOString(),
+        };
+      }
+      saveGuestConversations(conversations);
+      return conversations[idx];
+    }
     return await patchConversation(id, status);
   },
 );
@@ -146,6 +249,7 @@ const chatSlice = createSlice({
     clearError: (state) => {
       state.error = null;
     },
+    resetChatState: () => initialState,
   },
   extraReducers: (builder) => {
     // Load conversations
@@ -257,6 +361,12 @@ const chatSlice = createSlice({
   },
 });
 
-export const { setCurrentConversation, setUserId, clearUserId, clearError } =
-  chatSlice.actions;
+export const {
+  setCurrentConversation,
+  setUserId,
+  clearUserId,
+  clearError,
+  resetChatState,
+} = chatSlice.actions;
+
 export default chatSlice.reducer;

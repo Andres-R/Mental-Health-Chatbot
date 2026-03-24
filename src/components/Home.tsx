@@ -29,6 +29,7 @@ import {
   archiveConversationAsync,
 } from "../store/chatSlice";
 import { MessageRole, SafetyCategory } from "../types/chat";
+import { getAIResponse } from "../services/aiService";
 
 function clearGuestSessionData() {
   localStorage.removeItem("userId");
@@ -115,9 +116,8 @@ function Home() {
     const messageText = inputMessage.trim();
     setInputMessage("");
 
-    let sentMessageResult;
     try {
-      sentMessageResult = await dispatch(
+      await dispatch(
         sendMessageAsync({
           conversationId,
           userId: resolvedUserId,
@@ -128,44 +128,35 @@ function Home() {
       return;
     }
 
-    const safetyCategory = sentMessageResult.userMessage.safety_category;
+    setShowLoadingAnimation(true);
 
-    // Show loading animation after a 1-second delay
-    const animationTimeout = setTimeout(() => {
-      setShowLoadingAnimation(true);
-    }, 600);
+    let aiResponse;
+    try {
+      aiResponse = await getAIResponse(messageText);
+    } catch {
+      setShowLoadingAnimation(false);
+      return;
+    }
 
-    await new Promise((resolve) => setTimeout(resolve, 1800));
-
-    clearTimeout(animationTimeout);
     setShowLoadingAnimation(false);
 
-    const normalResponses = [
-      "Thank you for sharing that with me. How does that make you feel?",
-      "I understand. That sounds challenging. Can you tell me more?",
-      "It's completely normal to feel this way. What helps you cope?",
-      "I'm here to listen. Would you like to explore this further?",
-      "That sounds really important. What has this been like for you lately?",
-      "You do not have to handle everything at once. What feels hardest right now?",
-    ];
+    // console.log("aiResponse: ", aiResponse);
 
-    let botMessage = "";
+    let botMessage = aiResponse.message;
 
-    if (safetyCategory === SafetyCategory.SelfHarm) {
+    if (aiResponse.safetyCategory === SafetyCategory.SelfHarm) {
       botMessage =
         "I'm really sorry you're going through this. You deserve immediate support from a real person right now. If you may act on these feelings or are in immediate danger, call 911 now. If you are in the U.S. or Canada, call or text 988 for the Suicide & Crisis Lifeline right away. If you are elsewhere, please contact your local emergency services or crisis hotline now, and reach out to someone you trust to stay with you.";
-    } else if (safetyCategory === SafetyCategory.Violence) {
+    } else if (aiResponse.safetyCategory === SafetyCategory.Violence) {
       botMessage =
         "I can't help with hurting someone. Please step away from the situation for a moment, put distance between yourself and anyone involved, and contact emergency services if there is immediate danger. If you want, focus on staying safe right now and tell me what happened without names or violent details.";
-    } else {
-      botMessage =
-        normalResponses[Math.floor(Math.random() * normalResponses.length)];
     }
 
     dispatch(
       sendBotMessageAsync({
         conversationId,
         message: botMessage,
+        safetyCategory: aiResponse.safetyCategory,
       }),
     );
   };

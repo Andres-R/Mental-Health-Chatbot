@@ -141,10 +141,15 @@ export const sendBotMessageAsync = createAsyncThunk(
   async ({
     conversationId,
     message,
+    safetyCategory = SafetyCategory.None,
   }: {
     conversationId: string;
     message: string;
+    safetyCategory?: SafetyCategory;
   }) => {
+    const safetyFlag =
+      safetyCategory === SafetyCategory.SelfHarm ||
+      safetyCategory === SafetyCategory.Violence;
     if (isGuestMode()) {
       const botMsg: Message = {
         id: `msg-${Date.now()}-bot`,
@@ -153,8 +158,8 @@ export const sendBotMessageAsync = createAsyncThunk(
         role: MessageRole.System,
         message,
         created_at: new Date().toISOString(),
-        safety_flag: true,
-        safety_category: SafetyCategory.None,
+        safety_flag: safetyFlag,
+        safety_category: safetyCategory,
       };
       const allMessages = getGuestMessages();
       if (!allMessages[conversationId]) allMessages[conversationId] = [];
@@ -167,8 +172,8 @@ export const sendBotMessageAsync = createAsyncThunk(
       user_id: null,
       role: MessageRole.System,
       message,
-      safety_flag: true,
-      safety_category: SafetyCategory.None,
+      safety_flag: safetyFlag,
+      safety_category: safetyCategory,
     });
     return { conversationId, botMessage: botMsg };
   },
